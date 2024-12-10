@@ -26,6 +26,15 @@ const User = mongoose.model('User', new mongoose.Schema({
   password: String
 }));
 
+const Task = mongoose.model('Task', new mongoose.Schema({
+  title: { type: String, required: true },
+  description: { type: String },
+  status: { type: String, enum: ['To Do', 'In Progress', 'Done'], default: 'To Do' },
+  dueDate: { type: Date },
+  userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true }
+}));
+
+
 // Schematy walidacji Joi
 const registerSchema = Joi.object({
   username: Joi.string().min(3).max(30).required(),
@@ -82,5 +91,54 @@ app.post('/login', async (req, res) => {
     res.status(500).json(error);
   }
 });
+
+app.get('/tasks', async (req, res) => {
+  try {
+    const token = req.headers.authorization?.split(' ')[1];
+    if (!token) return res.status(401).send('Access denied');
+
+    const decoded = jwt.verify(token, 'secretkey');
+    const tasks = await Task.find({ userId: decoded.id });
+    res.json(tasks);
+  } catch (error) {
+    res.status(500).json({ message: 'Failed to fetch tasks', error });
+  }
+});
+
+app.post('/tasks', async (req, res) => {
+  try {
+    const token = req.headers.authorization?.split(' ')[1];
+    if (!token) return res.status(401).send('Access denied');
+
+    const decoded = jwt.verify(token, 'secretkey');
+    const { title, description, status, dueDate } = req.body;
+
+    const newTask = new Task({
+      title,
+      description,
+      status,
+      dueDate,
+      userId: decoded.id
+    });
+
+    await newTask.save();
+    res.status(201).json(newTask);
+  } catch (error) {
+    res.status(500).json({ message: 'Failed to create task', error });
+  }
+});
+
+// Pobierz wszystkich użytkowników (do testów)
+app.get('/users', async (req, res) => {
+  try {
+    const users = await User.find(); // Pobiera wszystkich użytkowników
+    res.json(users);
+  } catch (error) {
+    console.error('Error fetching users:', error);
+    res.status(500).json({ message: 'Failed to fetch users' });
+  }
+});
+
+
 
 app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
