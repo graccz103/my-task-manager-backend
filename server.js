@@ -92,9 +92,11 @@ app.get('/tasks', async (req, res) => {
     if (!token) return res.status(401).send('Access denied');
 
     const decoded = jwt.verify(token, 'secretkey');
-    const tasks = await Task.find({ userId: decoded.id }).populate('assignedTo', 'username email'); // Dodano populate
+    const tasks = await Task.find({ userId: decoded.id }).populate('assignedTo', 'username email');
+    console.log('Fetched tasks:', tasks); // Loguj zadania
     res.json(tasks);
   } catch (error) {
+    console.error('Failed to fetch tasks:', error);
     res.status(500).json({ message: 'Failed to fetch tasks', error });
   }
 });
