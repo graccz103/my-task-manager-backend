@@ -18,7 +18,6 @@ mongoose.connect('mongodb://127.0.0.1:27017/mytaskmanager')
   .then(() => console.log('MongoDB connected'))
   .catch(err => console.error('MongoDB connection error:', err));
 
-
 // Modele
 const User = mongoose.model('User', new mongoose.Schema({
   username: String,
@@ -31,7 +30,8 @@ const Task = mongoose.model('Task', new mongoose.Schema({
   description: { type: String },
   status: { type: String, enum: ['To Do', 'In Progress', 'Done'], default: 'To Do' },
   dueDate: { type: Date },
-  userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true }
+  userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+  assignedTo: { type: mongoose.Schema.Types.ObjectId, ref: 'User' } // Nowe pole
 }));
 
 
@@ -50,7 +50,6 @@ const loginSchema = Joi.object({
 // Rejestracja
 app.post('/register', async (req, res) => {
   try {
-    // Walidacja danych wejściowych
     const { error } = registerSchema.validate(req.body);
     if (error) return res.status(400).send(error.details[0].message);
 
@@ -58,12 +57,7 @@ app.post('/register', async (req, res) => {
     const salt = await bcrypt.genSalt(10);
     const hashedPassword = await bcrypt.hash(password, salt);
 
-    const newUser = new User({
-      username,
-      email,
-      password: hashedPassword
-    });
-
+    const newUser = new User({ username, email, password: hashedPassword });
     await newUser.save();
     res.status(201).send('User registered');
   } catch (error) {
@@ -74,7 +68,6 @@ app.post('/register', async (req, res) => {
 // Logowanie
 app.post('/login', async (req, res) => {
   try {
-    // Walidacja danych wejściowych
     const { error } = loginSchema.validate(req.body);
     if (error) return res.status(400).send(error.details[0].message);
 
@@ -92,33 +85,37 @@ app.post('/login', async (req, res) => {
   }
 });
 
+// Pobranie zadań
 app.get('/tasks', async (req, res) => {
   try {
     const token = req.headers.authorization?.split(' ')[1];
     if (!token) return res.status(401).send('Access denied');
 
     const decoded = jwt.verify(token, 'secretkey');
-    const tasks = await Task.find({ userId: decoded.id });
+    const tasks = await Task.find({ userId: decoded.id }).populate('assignedTo', 'username email'); // Dodano populate
     res.json(tasks);
   } catch (error) {
     res.status(500).json({ message: 'Failed to fetch tasks', error });
   }
 });
 
+
+// Tworzenie zadań
 app.post('/tasks', async (req, res) => {
   try {
     const token = req.headers.authorization?.split(' ')[1];
     if (!token) return res.status(401).send('Access denied');
 
     const decoded = jwt.verify(token, 'secretkey');
-    const { title, description, status, dueDate } = req.body;
+    const { title, description, status, dueDate, assignedTo } = req.body; // Dodano assignedTo
 
     const newTask = new Task({
       title,
       description,
       status,
       dueDate,
-      userId: decoded.id
+      userId: decoded.id,
+      assignedTo: assignedTo || null, // Jeśli brak przypisania, ustaw null
     });
 
     await newTask.save();
@@ -128,17 +125,15 @@ app.post('/tasks', async (req, res) => {
   }
 });
 
-// Pobierz wszystkich użytkowników (do testów)
+// Pobierz wszystkich użytkowników
 app.get('/users', async (req, res) => {
   try {
-    const users = await User.find(); // Pobiera wszystkich użytkowników
+    const users = await User.find();
     res.json(users);
   } catch (error) {
-    console.error('Error fetching users:', error);
-    res.status(500).json({ message: 'Failed to fetch users' });
+    res.status(500).json({ message: 'Failed to fetch users', error });
   }
 });
 
-
-
+// Start serwera
 app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
