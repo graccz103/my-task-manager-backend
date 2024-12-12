@@ -36,9 +36,10 @@ const Task = mongoose.model('Task', new mongoose.Schema({
   description: { type: String },
   status: { type: String, enum: ['To Do', 'In Progress', 'Done'], default: 'To Do' },
   dueDate: { type: Date },
-  userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
-  assignedTo: { type: mongoose.Schema.Types.ObjectId, ref: 'User' }
+  groupId: { type: mongoose.Schema.Types.ObjectId, ref: 'Group', required: true }, // Powiązanie z grupą
+  createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true } // Użytkownik, który utworzył zadanie
 }));
+
 
 
 // Schematy walidacji Joi
@@ -91,7 +92,7 @@ app.post('/login', async (req, res) => {
   }
 });
 
-// Pobranie zadań
+// Pobranie zadań grupy
 app.get('/tasks', async (req, res) => {
   try {
     const token = req.headers.authorization?.split(' ')[1];
@@ -99,50 +100,57 @@ app.get('/tasks', async (req, res) => {
 
     const decoded = jwt.verify(token, 'secretkey');
     const currentUser = await User.findById(decoded.id).populate('groupId');
+
     if (!currentUser.groupId) {
-      // Brak grupy, zwracamy tylko zadania użytkownika
-      const tasks = await Task.find({ userId: currentUser._id }).populate('assignedTo', 'username email');
-      return res.json(tasks);
+      return res.status(403).send('You are not part of any group');
     }
 
-    // Pobieramy użytkowników z tej samej grupy
-    const groupMembers = await User.find({ groupId: currentUser.groupId._id });
-    const memberIds = groupMembers.map(member => member._id);
+    const tasks = await Task.find({ groupId: currentUser.groupId._id })
+      .populate('createdBy', 'username email'); // Informacje o twórcy zadania
 
-    // Pobieramy zadania przypisane do członków grupy
-    const tasks = await Task.find({ userId: { $in: memberIds } }).populate('assignedTo', 'username email');
     res.json(tasks);
   } catch (error) {
+    console.error('Error fetching tasks:', error);
     res.status(500).json({ message: 'Failed to fetch tasks', error });
   }
 });
 
 
 
-// Tworzenie zadań
+
+
+// Tworzenie zadania w grupie
 app.post('/tasks', async (req, res) => {
   try {
     const token = req.headers.authorization?.split(' ')[1];
     if (!token) return res.status(401).send('Access denied');
 
     const decoded = jwt.verify(token, 'secretkey');
-    const { title, description, status, dueDate, assignedTo } = req.body; // Dodano assignedTo
+    const currentUser = await User.findById(decoded.id).populate('groupId');
+
+    if (!currentUser.groupId) {
+      return res.status(403).send('You must be part of a group to create a task');
+    }
+
+    const { title, description, status, dueDate } = req.body;
 
     const newTask = new Task({
       title,
       description,
       status,
       dueDate,
-      userId: decoded.id,
-      assignedTo: assignedTo || null, // Jeśli brak przypisania, ustaw null
+      groupId: currentUser.groupId._id, // Powiązanie z grupą użytkownika
+      createdBy: currentUser._id // Informacja o użytkowniku, który utworzył zadanie
     });
 
     await newTask.save();
     res.status(201).json(newTask);
   } catch (error) {
+    console.error('Error creating task:', error);
     res.status(500).json({ message: 'Failed to create task', error });
   }
 });
+
 
 app.post('/groups', async (req, res) => {
   try {
