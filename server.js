@@ -37,8 +37,10 @@ const Task = mongoose.model('Task', new mongoose.Schema({
   status: { type: String, enum: ['To Do', 'In Progress', 'In Review', 'Done'], default: 'To Do' },
   dueDate: { type: Date },
   groupId: { type: mongoose.Schema.Types.ObjectId, ref: 'Group', required: true }, // Powiązanie z grupą
-  createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true } // Użytkownik, który utworzył zadanie
+  createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true }, // Twórca zadania
+  assignedTo: { type: mongoose.Schema.Types.ObjectId, ref: 'User' }, // Przypisany użytkownik
 }));
+
 
 
 
@@ -106,7 +108,8 @@ app.get('/tasks', async (req, res) => {
     }
 
     const tasks = await Task.find({ groupId: currentUser.groupId._id })
-      .populate('createdBy', 'username email'); // Informacje o twórcy zadania
+      .populate('createdBy', 'username email') // Twórca zadania
+      .populate('assignedTo', 'username email'); // Przypisany użytkownik
 
     res.json(tasks);
   } catch (error) {
@@ -132,15 +135,16 @@ app.post('/tasks', async (req, res) => {
       return res.status(403).send('You must be part of a group to create a task');
     }
 
-    const { title, description, status, dueDate } = req.body;
+    const { title, description, status, dueDate, assignedTo } = req.body;
 
     const newTask = new Task({
       title,
       description,
       status,
       dueDate,
-      groupId: currentUser.groupId._id, // Powiązanie z grupą użytkownika
-      createdBy: currentUser._id // Informacja o użytkowniku, który utworzył zadanie
+      groupId: currentUser.groupId._id, // Powiązanie z grupą
+      createdBy: currentUser._id, // Twórca zadania
+      assignedTo: assignedTo || null, // Użytkownik przypisany do zadania (opcjonalne)
     });
 
     await newTask.save();
@@ -151,10 +155,13 @@ app.post('/tasks', async (req, res) => {
   }
 });
 
+
 app.get('/tasks/:taskId', async (req, res) => {
   try {
     const { taskId } = req.params;
-    const task = await Task.findById(taskId).populate('createdBy', 'username email');
+    const task = await Task.findById(taskId)
+      .populate('createdBy', 'username email')
+      .populate('assignedTo', 'username email'); // Przypisany użytkownik
     if (!task) return res.status(404).send('Task not found');
     res.status(200).json(task);
   } catch (error) {
@@ -162,15 +169,16 @@ app.get('/tasks/:taskId', async (req, res) => {
   }
 });
 
+
 app.put('/tasks/:taskId', async (req, res) => {
   try {
     const { taskId } = req.params;
-    const { title, description, status, dueDate } = req.body;
+    const { title, description, status, dueDate, assignedTo } = req.body;
 
     const updatedTask = await Task.findByIdAndUpdate(
       taskId,
-      { title, description, status, dueDate },
-      { new: true, runValidators: true } // Zwraca zaktualizowany dokument i weryfikuje dane
+      { title, description, status, dueDate, assignedTo },
+      { new: true, runValidators: true }
     );
 
     if (!updatedTask) {
@@ -181,6 +189,24 @@ app.put('/tasks/:taskId', async (req, res) => {
   } catch (error) {
     console.error('Error updating task:', error);
     res.status(500).json({ message: 'Failed to update task', error });
+  }
+});
+
+// Usuwanie zadania
+app.delete('/tasks/:taskId', async (req, res) => {
+  try {
+    const { taskId } = req.params;
+
+    const deletedTask = await Task.findByIdAndDelete(taskId);
+
+    if (!deletedTask) {
+      return res.status(404).send('Task not found');
+    }
+
+    res.status(200).send('Task deleted successfully');
+  } catch (error) {
+    console.error('Error deleting task:', error);
+    res.status(500).json({ message: 'Failed to delete task', error });
   }
 });
 
