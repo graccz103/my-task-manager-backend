@@ -34,7 +34,7 @@ const Group = mongoose.model('Group', new mongoose.Schema({
 const Task = mongoose.model('Task', new mongoose.Schema({
   title: { type: String, required: true },
   description: { type: String },
-  status: { type: String, enum: ['To Do', 'In Progress', 'Done'], default: 'To Do' },
+  status: { type: String, enum: ['To Do', 'In Progress', 'In Review', 'Done'], default: 'To Do' },
   dueDate: { type: Date },
   groupId: { type: mongoose.Schema.Types.ObjectId, ref: 'Group', required: true }, // Powiązanie z grupą
   createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true } // Użytkownik, który utworzył zadanie
@@ -150,6 +150,40 @@ app.post('/tasks', async (req, res) => {
     res.status(500).json({ message: 'Failed to create task', error });
   }
 });
+
+app.get('/tasks/:taskId', async (req, res) => {
+  try {
+    const { taskId } = req.params;
+    const task = await Task.findById(taskId).populate('createdBy', 'username email');
+    if (!task) return res.status(404).send('Task not found');
+    res.status(200).json(task);
+  } catch (error) {
+    res.status(500).json({ message: 'Failed to fetch task details', error });
+  }
+});
+
+app.put('/tasks/:taskId', async (req, res) => {
+  try {
+    const { taskId } = req.params;
+    const { title, description, status, dueDate } = req.body;
+
+    const updatedTask = await Task.findByIdAndUpdate(
+      taskId,
+      { title, description, status, dueDate },
+      { new: true, runValidators: true } // Zwraca zaktualizowany dokument i weryfikuje dane
+    );
+
+    if (!updatedTask) {
+      return res.status(404).send('Task not found');
+    }
+
+    res.status(200).json(updatedTask);
+  } catch (error) {
+    console.error('Error updating task:', error);
+    res.status(500).json({ message: 'Failed to update task', error });
+  }
+});
+
 
 
 app.post('/groups', async (req, res) => {
@@ -273,6 +307,18 @@ app.get('/groups/:groupId', async (req, res) => {
     res.status(500).json({ message: 'Failed to fetch group details', error });
   }
 });
+
+app.get('/groups/:groupId/members', async (req, res) => {
+  try {
+    const { groupId } = req.params;
+    const group = await Group.findById(groupId).populate('members', 'username email');
+    if (!group) return res.status(404).send('Group not found');
+    res.status(200).json(group.members);
+  } catch (error) {
+    res.status(500).json({ message: 'Failed to fetch group members', error });
+  }
+});
+
 
 app.post('/groups/:groupId/join', async (req, res) => {
   try {
