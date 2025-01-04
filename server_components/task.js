@@ -135,4 +135,50 @@ router.delete('/:taskId', async (req, res) => {
   }
 });
 
+
+// Obsługa Załączników
+
+const multer = require('multer');
+const path = require('path');
+
+// Konfiguracja multer
+const storage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    cb(null, 'uploads/');
+  },
+  filename: (req, file, cb) => {
+    cb(null, `${Date.now()}-${file.originalname}`);
+  },
+});
+
+const upload = multer({ storage });
+
+router.post('/upload/:taskId', upload.single('file'), async (req, res) => {
+  const { taskId } = req.params;
+
+  if (!req.file) {
+    return res.status(400).send('No file uploaded.');
+  }
+
+  try {
+    const task = await Task.findById(taskId);
+    if (!task) {
+      return res.status(404).send('Task not found.');
+    }
+
+    // Dodajemy ścieżkę pliku do attachments
+    const filePath = `/uploads/${req.file.filename}`;
+    task.attachments.push(filePath);
+    await task.save();
+
+    res.status(200).json({ filePath });
+  } catch (error) {
+    console.error('Error uploading file:', error);
+    res.status(500).json({ message: 'Error uploading file', error });
+  }
+});
+
+
+
+
 module.exports = router;
